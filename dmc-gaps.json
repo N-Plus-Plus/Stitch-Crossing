@@ -1,0 +1,122 @@
+{
+  "schemaVersion": "0.1.0",
+  "generatedFor": "Stitch Crossing",
+  "generatedAt": "2026-06-08",
+  "description": "DMC floss ranges deliberately excluded from dmc.json until per-colour codes, representative hex values, and properties are manually verified.",
+  "gaps": [
+    {
+      "range": "Mouline Coloris",
+      "rangeDisplay": "Mouliné Coloris",
+      "rangeSku": "517-E",
+      "expectedOptionsFromDmc": 20,
+      "reason": "Variegated six-strand thread combining four complementary colours; needs componentHexes and representativeHex per code.",
+      "suggestedProperties": {
+        "colourType": "variegated",
+        "variegated": true,
+        "metallic": false,
+        "sparkle": false,
+        "satin": false,
+        "strandable": true,
+        "strands": 6,
+        "lengthMeters": 8,
+        "fibre": [
+          "cotton"
+        ]
+      }
+    },
+    {
+      "range": "Mouline Color Variations",
+      "rangeDisplay": "Mouliné Color Variations",
+      "rangeSku": "417F-E",
+      "expectedOptionsFromDmc": 34,
+      "reason": "Variegated tonal thread; DMC search/card count and technical-details count should be reconciled before adding.",
+      "suggestedProperties": {
+        "colourType": "variegated",
+        "variegated": true,
+        "metallic": false,
+        "sparkle": false,
+        "satin": false,
+        "strandable": true,
+        "strands": 6,
+        "lengthMeters": 8,
+        "fibre": [
+          "cotton"
+        ]
+      }
+    },
+    {
+      "range": "Mouline Satin",
+      "rangeDisplay": "Mouliné Satin",
+      "rangeSku": "1008F-E",
+      "expectedOptionsFromDmc": 36,
+      "reason": "Rayon satin range should be kept separate from cotton even where DMC codes overlap; needs verified per-code list and hex treatment for sheen.",
+      "suggestedProperties": {
+        "colourType": "solid",
+        "variegated": false,
+        "metallic": false,
+        "sparkle": false,
+        "satin": true,
+        "strandable": true,
+        "strands": 6,
+        "lengthMeters": 8,
+        "fibre": [
+          "rayon"
+        ]
+      }
+    },
+    {
+      "range": "Mouline Light Effects",
+      "rangeDisplay": "Mouliné Light Effects",
+      "rangeSku": "317W-E",
+      "expectedOptionsFromDmc": 36,
+      "reason": "Includes metallic glimmer, pearlescent, fluorescent and glow-in-the-dark effects; needs per-code effect flags beyond a single hex.",
+      "suggestedProperties": {
+        "colourType": "effect",
+        "variegated": false,
+        "metallic": true,
+        "sparkle": true,
+        "satin": false,
+        "strandable": true,
+        "strands": 6,
+        "lengthMeters": 8,
+        "fibre": [
+          "polyester"
+        ]
+      }
+    },
+    {
+      "range": "Mouline Etoile",
+      "rangeDisplay": "Mouliné Étoile",
+      "rangeSku": "617-E",
+      "expectedOptionsFromDmc": 34,
+      "reason": "Cotton/lurex sparkle range; DMC page displays 34 options but technical copy says 35 sparkling colours, so count and code list need verification.",
+      "suggestedProperties": {
+        "colourType": "sparkle-solid",
+        "variegated": false,
+        "metallic": false,
+        "sparkle": true,
+        "satin": false,
+        "strandable": true,
+        "strands": 6,
+        "lengthMeters": 8,
+        "fibre": [
+          "cotton",
+          "lurex"
+        ]
+      }
+    },
+    {
+      "range": "Diamant / Diamant Grande / Metallic Perle / Metallic Embroidery Thread",
+      "rangeDisplay": "DMC metallic specialty thread families",
+      "rangeSku": null,
+      "expectedOptionsFromDmc": null,
+      "reason": "Adjacent useful DMC products but not six-strand stranded cotton. Include later only if Stitch Crossing recommends specialty substitutes.",
+      "suggestedProperties": {
+        "colourType": "metallic-specialty",
+        "metallic": true,
+        "sparkle": true,
+        "strandable": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-06-08",
+  "threadCount": 489,
+  "rangeCounts": {
+    "Mouline Special": 489
+  },
+  "monochromeLikeCount": 50,
+  "gapRangeCount": 6,
+  "errors": [],
+  "warnings": [
+    "This is a seed catalogue: DMC official range metadata is reliable, but individual hex colours are approximations.",
+    "Mouliné Spécial official page says 500 options; this seed has 489 entries matching the visible RGB table and common current solid-floss colour chart coverage.",
+    "localItemCode is derived from rangeSku and dmcCode and is not claimed as an official retail SKU.",
+    "Five seed rows had source hex/RGB disagreement; hex was normalised from the RGB triplets and the raw seed hex was retained on each affected thread under source.rawSeedHex."
+  ],
+  "normalisedHexFromRgbCodes": [
+    "3814",
+    "744",
+    "3853",
+    "09",
+    "33"
+  ]
+}

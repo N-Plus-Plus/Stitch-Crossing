@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stitch Crossing</title>
+    <link rel="icon" type="image/png" href="fav.png">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <img class="brand-logo" src="fav.png" alt="" aria-hidden="true">
+          <div>
+            <p class="eyebrow">Static cross-stitch pattern maker</p>
+            <h1>Stitch Crossing</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button id="copyButton" type="button" title="Copy pattern PNG to clipboard">Copy PNG</button>
+          <button id="downloadButton" type="button" title="Download pattern PNG">Download</button>
+          <button id="printButton" type="button" title="Print centered on A4">Print</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="control-panel" aria-label="Pattern controls">
+          <section>
+            <h2>Image</h2>
+            <label class="field">
+              <span>Internet image URL</span>
+              <div class="inline-input">
+                <input id="imageUrl" type="url" placeholder="https://example.com/image.jpg" autocomplete="off">
+                <button id="loadUrlButton" type="button">Load</button>
+              </div>
+            </label>
+            <div class="image-actions">
+              <button id="chooseFileButton" class="file-button" type="button">Choose file</button>
+              <button id="pasteButton" type="button">Paste</button>
+              <input id="fileInput" type="file" accept="image/*">
+            </div>
+            <div class="section-break" aria-hidden="true"></div>
+            <label class="field">
+              <span>Conversion mode</span>
+              <select id="conversionMode">
+                <option value="silhouette">Silhouette</option>
+                <option value="line-art" selected>Line art</option>
+                <option value="tonal">Tonal greyscale</option>
+              </select>
+            </label>
+            <label class="toggle-row">
+              <input id="autoInvertDarkBackground" type="checkbox" checked>
+              <span>Auto invert dark background</span>
+            </label>
+            <label class="field">
+              <span>Mirror source side</span>
+              <select id="mirrorSourceSide">
+                <option value="off">Off</option>
+                <option value="left" selected>Left</option>
+                <option value="right">Right</option>
+              </select>
+            </label>
+            <p class="hint">You can also paste an image or image URL into the page.</p>
+          </section>
+
+          <section>
+            <h2>Fabric</h2>
+            <label class="slider-field">
+              <span>Aida count</span>
+              <output id="fabricCountValue">14 stitches/in</output>
+              <input id="fabricCount" type="range" min="6" max="22" step="1" value="14">
+            </label>
+            <label class="slider-field">
+              <span>Finished max dimension</span>
+              <output id="finishedSizeValue">16 cm</output>
+              <input id="finishedSize" type="range" min="5" max="40" step="1" value="16">
+            </label>
+            <label class="slider-field">
+              <span>Floss shades</span>
+              <output id="shadeCountValue">2 shades</output>
+              <input id="shadeCount" type="range" min="2" max="12" step="1" value="2">
+            </label>
+          </section>
+
+          <section>
+            <details class="advanced-panel">
+              <summary>Advanced</summary>
+              <div class="advanced-content">
+                <h2>Outline</h2>
+                <label class="toggle-row">
+                  <input id="outlineEnabled" type="checkbox" checked>
+                  <span>Enable stitched stroke</span>
+                </label>
+                <label class="field color-field">
+                  <span>Stroke color</span>
+                  <input id="outlineColor" type="color" value="#000000">
+                </label>
+                <label class="slider-field">
+                  <span>Edge sensitivity</span>
+                  <output id="edgeSensitivityValue">64</output>
+                  <input id="edgeSensitivity" type="range" min="24" max="120" step="4" value="64">
+                </label>
+                <label class="slider-field">
+                  <span>Outline strength</span>
+                  <output id="outlineStrengthValue">2 / 5</output>
+                  <input id="outlineStrength" type="range" min="1" max="5" step="1" value="2">
+                </label>
+                <label class="slider-field">
+                  <span>Line thinning</span>
+                  <output id="lineThinningValue">2</output>
+                  <input id="lineThinning" type="range" min="0" max="4" step="1" value="2">
+                </label>
+              </div>
+            </details>
+          </section>
+        </aside>
+
+        <section class="canvas-stage" aria-label="Pattern preview">
+          <div class="canvas-toolbar">
+            <div>
+              <h2>Pattern preview</h2>
+              <p id="renderMeta">No image loaded</p>
+            </div>
+            <label class="toolbar-toggle">
+              <input id="whiteOutStitches" type="checkbox" checked>
+              <span>White out stitches</span>
+            </label>
+            <div class="toolbar-actions">
+              <button id="cropButton" type="button" aria-pressed="false">Crop</button>
+              <button id="resetButton" type="button">Reset</button>
+            </div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="patternCanvas" width="1200" height="800"></canvas>
+            <canvas id="stitchPreviewCanvas" width="1200" height="800"></canvas>
+          </div>
+          <div class="pattern-info" aria-label="Pattern information">
+            <h2>Pattern</h2>
+            <dl class="stats">
+              <div>
+                <dt>Stitches</dt>
+                <dd id="stitchStats">-</dd>
+              </div>
+              <div>
+                <dt>Finished size</dt>
+                <dd id="sizeStats">-</dd>
+              </div>
+              <div>
+                <dt>Threads</dt>
+                <dd id="threadStats">-</dd>
+              </div>
+            </dl>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="script.js"></script>
+  </body>
+</html>
