@@ -423,6 +423,12 @@ output {
 
 #patternCanvas.is-cropping {
   cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+#patternCanvas.is-clearing {
+  cursor: cell;
 }
 
 .canvas-wrap {

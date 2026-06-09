@@ -34,6 +34,7 @@ const controls = {
   renderMeta: document.getElementById("renderMeta"),
   whiteOutStitches: document.getElementById("whiteOutStitches"),
   cropButton: document.getElementById("cropButton"),
+  clearButton: document.getElementById("clearButton"),
   resetButton: document.getElementById("resetButton"),
   copyButton: document.getElementById("copyButton"),
   downloadButton: document.getElementById("downloadButton"),
@@ -60,8 +61,10 @@ let latestOptions = null;
 let renderTimer = 0;
 let toastTimer = 0;
 let manualCropRect = null;
-let cropModeEnabled = false;
+let manualClearRects = [];
+let selectionMode = null;
 let cropDragStart = null;
+let cropPointerId = null;
 
 drawEmptyState();
 syncLabels();
@@ -116,11 +119,13 @@ controls.pasteButton.addEventListener("pointerdown", (event) => {
 controls.copyButton.addEventListener("click", copyCanvasToClipboard);
 controls.downloadButton.addEventListener("click", downloadCanvas);
 controls.printButton.addEventListener("click", printCanvas);
-controls.cropButton.addEventListener("click", toggleCropMode);
+controls.cropButton.addEventListener("click", () => toggleSelectionMode("crop"));
+controls.clearButton.addEventListener("click", () => toggleSelectionMode("clear"));
 controls.resetButton.addEventListener("click", resetManipulations);
-canvas.addEventListener("mousedown", beginCropDrag);
-canvas.addEventListener("mousemove", updateCropDrag);
-window.addEventListener("mouseup", finishCropDrag);
+canvas.addEventListener("pointerdown", beginCropDrag);
+canvas.addEventListener("pointermove", updateCropDrag);
+canvas.addEventListener("pointerup", finishCropDrag);
+canvas.addEventListener("pointercancel", cancelCropDrag);
 
 window.addEventListener("paste", (event) => {
   const items = [...(event.clipboardData?.items || [])];
@@ -139,40 +144,44 @@ window.addEventListener("paste", (event) => {
   }
 });
 
-function toggleCropMode() {
-  cropModeEnabled = !cropModeEnabled;
-  cropDragStart = null;
-  controls.cropButton.setAttribute("aria-pressed", String(cropModeEnabled));
-  canvas.classList.toggle("is-cropping", cropModeEnabled);
+function toggleSelectionMode(mode) {
+  selectionMode = selectionMode === mode ? null : mode;
+  cancelCropDrag();
+  syncSelectionModeControls();
 }
 
 function resetManipulations() {
   manualCropRect = null;
-  cropDragStart = null;
-  if (cropModeEnabled) {
-    cropModeEnabled = false;
-    controls.cropButton.setAttribute("aria-pressed", "false");
-    canvas.classList.remove("is-cropping");
-  }
+  manualClearRects = [];
+  cancelCropDrag();
+  selectionMode = null;
+  syncSelectionModeControls();
   scheduleRender();
 }
 
 function beginCropDrag(event) {
-  if (!cropModeEnabled || !latestPattern) return;
+  if (!selectionMode || !latestPattern || cropPointerId !== null) return;
 
   const cell = canvasPointToPatternCell(event.clientX, event.clientY, false);
   if (!cell) return;
 
   event.preventDefault();
+  cropPointerId = event.pointerId;
   cropDragStart = cell;
+  canvas.setPointerCapture?.(event.pointerId);
 }
 
 function finishCropDrag(event) {
-  if (!cropModeEnabled || !cropDragStart || !latestPattern) return;
+  if (event.pointerId !== cropPointerId) return;
+  if (!selectionMode || !cropDragStart || !latestPattern) {
+    cancelCropDrag(event);
+    return;
+  }
 
+  event.preventDefault();
   const endCell = canvasPointToPatternCell(event.clientX, event.clientY, true);
   if (!endCell) {
-    cropDragStart = null;
+    cancelCropDrag(event);
     return;
   }
 
@@ -187,25 +196,32 @@ function finishCropDrag(event) {
     height: bottom - top + 1
   };
 
-  manualCropRect = manualCropRect
-    ? {
-        x: manualCropRect.x + selectedRect.x,
-        y: manualCropRect.y + selectedRect.y,
-        width: selectedRect.width,
-        height: selectedRect.height
-      }
-    : selectedRect;
+  if (selectionMode === "crop") {
+    manualClearRects = transformClearRectsForCrop(manualClearRects, selectedRect);
+    manualCropRect = manualCropRect
+      ? {
+          x: manualCropRect.x + selectedRect.x,
+          y: manualCropRect.y + selectedRect.y,
+          width: selectedRect.width,
+          height: selectedRect.height
+        }
+      : selectedRect;
+  } else {
+    manualClearRects.push(selectedRect);
+  }
 
   cropDragStart = null;
-  cropModeEnabled = false;
-  controls.cropButton.setAttribute("aria-pressed", "false");
-  canvas.classList.remove("is-cropping");
+  cropPointerId = null;
+  selectionMode = null;
+  syncSelectionModeControls();
+  releaseCropPointer(event);
   scheduleRender();
 }
 
 function updateCropDrag(event) {
-  if (!cropModeEnabled || !cropDragStart || !latestPattern) return;
+  if (event.pointerId !== cropPointerId || !selectionMode || !cropDragStart || !latestPattern) return;
 
+  event.preventDefault();
   const endCell = canvasPointToPatternCell(event.clientX, event.clientY, true);
   if (!endCell) return;
 
@@ -213,16 +229,41 @@ function updateCropDrag(event) {
   drawCropSelection(cropDragStart, endCell);
 }
 
+function syncSelectionModeControls() {
+  controls.cropButton.setAttribute("aria-pressed", String(selectionMode === "crop"));
+  controls.clearButton.setAttribute("aria-pressed", String(selectionMode === "clear"));
+  canvas.classList.toggle("is-cropping", Boolean(selectionMode));
+  canvas.classList.toggle("is-clearing", selectionMode === "clear");
+}
+
+function cancelCropDrag(event) {
+  if (!cropDragStart && cropPointerId === null) return;
+
+  releaseCropPointer(event);
+  cropDragStart = null;
+  cropPointerId = null;
+  if (latestPattern) {
+    drawPattern(latestPattern, latestOptions || getOptions());
+  }
+}
+
+function releaseCropPointer(event) {
+  if (event && canvas.hasPointerCapture?.(event.pointerId)) {
+    canvas.releasePointerCapture(event.pointerId);
+  }
+}
+
 function drawCropSelection(startCell, endCell) {
   const left = Math.min(startCell.x, endCell.x);
   const top = Math.min(startCell.y, endCell.y);
   const right = Math.max(startCell.x, endCell.x);
   const bottom = Math.max(startCell.y, endCell.y);
+  const isClearSelection = selectionMode === "clear";
 
   ctx.save();
   ctx.translate(margin, margin);
-  ctx.fillStyle = "rgba(0, 229, 255, 0.14)";
-  ctx.strokeStyle = "rgba(0, 229, 255, 0.95)";
+  ctx.fillStyle = isClearSelection ? "rgba(255, 255, 255, 0.42)" : "rgba(0, 229, 255, 0.14)";
+  ctx.strokeStyle = isClearSelection ? "rgba(255, 80, 80, 0.95)" : "rgba(0, 229, 255, 0.95)";
   ctx.lineWidth = 3;
   ctx.fillRect(left * cellPixels, top * cellPixels, (right - left + 1) * cellPixels, (bottom - top + 1) * cellPixels);
   ctx.strokeRect(
@@ -341,6 +382,12 @@ function loadImageObjectUrl(objectUrl, name) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
+      manualCropRect = null;
+      manualClearRects = [];
+      selectionMode = null;
+      cropDragStart = null;
+      cropPointerId = null;
+      syncSelectionModeControls();
       sourceImage = image;
       sourceName = name;
       renderPattern();
@@ -386,7 +433,8 @@ function renderPattern() {
   const normalPattern = buildPattern(analysis, dimensions, options);
   const mirroredPattern = options.mirrorEnabled ? applyMirrorMode(normalPattern, options) : normalPattern;
   const gutteredPattern = applyFiveStitchGutter(mirroredPattern);
-  const pattern = manualCropRect ? cropPatternToRect(gutteredPattern, manualCropRect) : gutteredPattern;
+  const croppedPattern = manualCropRect ? cropPatternToRect(gutteredPattern, manualCropRect) : gutteredPattern;
+  const pattern = applyManualClearRects(croppedPattern);
   drawPattern(pattern, options);
   drawStitchPreview(pattern);
 
@@ -401,11 +449,14 @@ function renderPattern() {
   const cropSummary = manualCropRect
     ? `Manual crop ${pattern.width} by ${pattern.height} stitches`
     : describeCrop(cropRect, workingImage);
+  const clearSummary = manualClearRects.length
+    ? ` ${manualClearRects.length} cleared area${manualClearRects.length === 1 ? "" : "s"}.`
+    : "";
   const invertSummary = preprocessed.inverted ? " Auto inverted." : "";
   controls.renderMeta.textContent = `${sourceName} - ${pattern.width} x ${pattern.height} stitches.${invertSummary}`;
 
   const capped = pattern.wasCapped ? " Pattern detail was capped to keep the canvas export practical." : "";
-  setStatus(`Ready. ${modeDetail} mode${mirrorSummary}, ${pattern.width} by ${pattern.height} stitches on ${options.fabricCount}-count Aida. ${cropSummary}.${invertSummary}${capped}`, pattern.wasCapped ? "warning" : "");
+  setStatus(`Ready. ${modeDetail} mode${mirrorSummary}, ${pattern.width} by ${pattern.height} stitches on ${options.fabricCount}-count Aida. ${cropSummary}.${clearSummary}${invertSummary}${capped}`, pattern.wasCapped ? "warning" : "");
 }
 
 function getOptions() {
@@ -1376,13 +1427,17 @@ function findNonBlankConcentrationCenterX(pattern) {
 }
 
 function createBlankCellGrid(width, height) {
-  return Array.from({ length: width * height }, () => ({
+  return Array.from({ length: width * height }, createBlankCell);
+}
+
+function createBlankCell() {
+  return {
     luminance: 255,
     color: "#ffffff",
     paletteIndex: null,
     isBlank: true,
     isOutline: false
-  }));
+  };
 }
 
 function mirrorCells(cells, width, height, requestedSide) {
@@ -1433,13 +1488,7 @@ function rebuildPatternWithCells(pattern, cells) {
     if (cell.paletteIndex === null) return cloneCell(cell);
     const nextIndex = remap.get(cell.paletteIndex);
     if (nextIndex === undefined) {
-      return {
-        luminance: 255,
-        color: "#ffffff",
-        paletteIndex: null,
-        isBlank: true,
-        isOutline: false
-      };
+      return createBlankCell();
     }
     return {
       ...cell,
@@ -1514,6 +1563,56 @@ function cropPatternToRect(pattern, rect) {
     },
     cells
   );
+}
+
+function applyManualClearRects(pattern) {
+  if (!manualClearRects.length) return pattern;
+
+  return manualClearRects.reduce((clearedPattern, rect) => clearPatternRect(clearedPattern, rect), pattern);
+}
+
+function clearPatternRect(pattern, rect) {
+  const left = clamp(Math.floor(rect.x), 0, Math.max(0, pattern.width - 1));
+  const top = clamp(Math.floor(rect.y), 0, Math.max(0, pattern.height - 1));
+  const right = clamp(Math.floor(rect.x + rect.width - 1), left, Math.max(0, pattern.width - 1));
+  const bottom = clamp(Math.floor(rect.y + rect.height - 1), top, Math.max(0, pattern.height - 1));
+  const cells = pattern.cells.map((cell) => cloneCell(cell));
+
+  for (let y = top; y <= bottom; y++) {
+    for (let x = left; x <= right; x++) {
+      cells[y * pattern.width + x] = createBlankCell();
+    }
+  }
+
+  return rebuildPatternWithCells(pattern, cells);
+}
+
+function transformClearRectsForCrop(clearRects, cropRect) {
+  return clearRects
+    .map((clearRect) => intersectRects(clearRect, cropRect))
+    .filter(Boolean)
+    .map((clearRect) => ({
+      x: clearRect.x - cropRect.x,
+      y: clearRect.y - cropRect.y,
+      width: clearRect.width,
+      height: clearRect.height
+    }));
+}
+
+function intersectRects(a, b) {
+  const left = Math.max(a.x, b.x);
+  const top = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.width - 1, b.x + b.width - 1);
+  const bottom = Math.min(a.y + a.height - 1, b.y + b.height - 1);
+
+  if (right < left || bottom < top) return null;
+
+  return {
+    x: left,
+    y: top,
+    width: right - left + 1,
+    height: bottom - top + 1
+  };
 }
 
 function cloneCell(cell) {
