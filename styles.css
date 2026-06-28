@@ -35,11 +35,13 @@ body {
 
 button,
 input,
-select {
+select,
+.file-button {
   font: inherit;
 }
 
-button {
+button,
+.file-button {
   min-height: 2.5rem;
   border: 1px solid rgba(205, 210, 218, 0.28);
   border-radius: 8px;
@@ -49,12 +51,14 @@ button {
   cursor: pointer;
 }
 
-button:hover {
+button:hover,
+.file-button:hover {
   border-color: rgba(215, 219, 226, 0.74);
   background: linear-gradient(180deg, rgba(205, 210, 218, 0.32), rgba(205, 210, 218, 0.14));
 }
 
-button:active {
+button:active,
+.file-button:active {
   transform: translateY(1px);
 }
 
@@ -237,7 +241,12 @@ h2 {
 }
 
 .file-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
+  text-align: center;
+  cursor: pointer;
 }
 
 .section-break {

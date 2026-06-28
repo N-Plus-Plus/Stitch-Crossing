@@ -119,12 +119,13 @@ controls.fileInput.addEventListener("change", () => {
   loadImageFromFile(file);
 });
 
-controls.chooseFileButton.addEventListener("click", () => {
+controls.chooseFileButton.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
   controls.fileInput.click();
 });
 
-controls.pasteButton.addEventListener("pointerdown", (event) => {
-  event.preventDefault();
+controls.pasteButton.addEventListener("click", () => {
   pasteClipboardImage();
 });
 
@@ -331,27 +332,36 @@ function canvasPointToPatternCell(clientX, clientY, clampToPattern) {
 }
 
 async function pasteClipboardImage() {
-  if (!navigator.clipboard?.read) {
-    showToast("Clipboard does not contain compatable image");
+  if (!navigator.clipboard?.read && !navigator.clipboard?.readText) {
+    showToast("Clipboard does not contain a compatible image or URL.");
     return;
   }
 
   controls.pasteButton.disabled = true;
 
   try {
-    const clipboardItems = await navigator.clipboard.read();
-    for (const item of clipboardItems) {
-      const imageType = item.types.find((type) => type.startsWith("image/"));
-      if (!imageType) continue;
+    if (navigator.clipboard.read) {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        const imageType = item.types.find((type) => type.startsWith("image/"));
+        if (!imageType) continue;
 
-      const blob = await item.getType(imageType);
-      await loadImageFromFile(blob, "Pasted image");
+        const blob = await item.getType(imageType);
+        await loadImageFromFile(blob, "Pasted image");
+        return;
+      }
+    }
+
+    const text = (await navigator.clipboard.readText?.())?.trim();
+    if (text && /^https?:\/\//i.test(text)) {
+      controls.imageUrl.value = text;
+      await loadImageFromUrl(text);
       return;
     }
 
-    showToast("Clipboard does not contain compatable image");
+    showToast("Clipboard does not contain a compatible image or URL.");
   } catch {
-    showToast("Clipboard does not contain compatable image");
+    showToast("Clipboard does not contain a compatible image or URL.");
   } finally {
     controls.pasteButton.disabled = false;
   }
@@ -1624,7 +1634,11 @@ function findNonBlankConcentrationCenterX(pattern) {
 }
 
 function createBlankCellGrid(width, height, aidaColor = "white") {
-  return Array.from({ length: width * height }, () => ({
+  return Array.from({ length: width * height }, () => createBlankCell(aidaColor));
+}
+
+function createBlankCell(aidaColor = "white") {
+  return {
     luminance: 255,
     color: "#ffffff",
     displayColor: getAidaColor(aidaColor),
@@ -1781,7 +1795,7 @@ function clearPatternRect(pattern, rect) {
 
   for (let y = top; y <= bottom; y++) {
     for (let x = left; x <= right; x++) {
-      cells[y * pattern.width + x] = createBlankCell();
+      cells[y * pattern.width + x] = createBlankCell(pattern.aidaColor);
     }
   }
 
