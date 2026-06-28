@@ -71,6 +71,14 @@
               <output id="fabricCountValue">14 stitches/in</output>
               <input id="fabricCount" type="range" min="6" max="22" step="1" value="14">
             </label>
+            <label class="field">
+              <span>Aida colour</span>
+              <select id="aidaColor">
+                <option value="white" selected>White</option>
+                <option value="grey">Grey</option>
+                <option value="black">Black</option>
+              </select>
+            </label>
             <label class="slider-field">
               <span>Finished max dimension</span>
               <output id="finishedSizeValue">16 cm</output>
@@ -80,6 +88,11 @@
               <span>Floss shades</span>
               <output id="shadeCountValue">2 shades</output>
               <input id="shadeCount" type="range" min="2" max="12" step="1" value="2">
+            </label>
+            <label class="slider-field">
+              <span>Threads</span>
+              <output id="threadCountValue">3 threads</output>
+              <input id="threadCount" type="range" min="1" max="6" step="1" value="3">
             </label>
           </section>
 
@@ -157,6 +170,7 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="https://unpkg.com/lucide@1.21.0/dist/umd/lucide.min.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

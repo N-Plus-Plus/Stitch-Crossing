@@ -13,8 +13,10 @@ const controls = {
   autoInvertDarkBackground: document.getElementById("autoInvertDarkBackground"),
   mirrorSourceSide: document.getElementById("mirrorSourceSide"),
   fabricCount: document.getElementById("fabricCount"),
+  aidaColor: document.getElementById("aidaColor"),
   finishedSize: document.getElementById("finishedSize"),
   shadeCount: document.getElementById("shadeCount"),
+  threadCount: document.getElementById("threadCount"),
   outlineEnabled: document.getElementById("outlineEnabled"),
   outlineColor: document.getElementById("outlineColor"),
   edgeSensitivity: document.getElementById("edgeSensitivity"),
@@ -23,6 +25,7 @@ const controls = {
   fabricCountValue: document.getElementById("fabricCountValue"),
   finishedSizeValue: document.getElementById("finishedSizeValue"),
   shadeCountValue: document.getElementById("shadeCountValue"),
+  threadCountValue: document.getElementById("threadCountValue"),
   edgeSensitivityValue: document.getElementById("edgeSensitivityValue"),
   outlineStrengthValue: document.getElementById("outlineStrengthValue"),
   lineThinningValue: document.getElementById("lineThinningValue"),
@@ -41,7 +44,36 @@ const controls = {
 };
 
 const maxCellsPerSide = 360;
-const chartSymbols = ["o", "*", "#", "+", "-", "x", "/", "@", "^", "v", "%", "=", "~"];
+const chartSymbols = [
+  "x",
+  "circle",
+  "plus",
+  "ban",
+  "box",
+  "target",
+  "bolt",
+  "circle-minus",
+  "scan",
+  "crosshair",
+  "grid-3x3",
+  "life-buoy",
+  "minimize",
+  "loader-pinwheel",
+  "chevron-down",
+  "chevronupft",
+  "chevron-up",
+  "chevron-right"
+];
+const lucideSymbolAliases = {
+  bolt: "zap",
+  box: "square",
+  chevronupft: "chevron-up"
+};
+const aidaColors = {
+  white: { label: "White", color: "#ffffff" },
+  grey: { label: "Grey", color: "#808080" },
+  black: { label: "Black", color: "#000000" }
+};
 const margin = 28;
 const cellPixels = 18;
 const darkestPrintedShade = 100;
@@ -95,8 +127,10 @@ controls.pasteButton.addEventListener("pointerdown", (event) => {
 
 [
   controls.fabricCount,
+  controls.aidaColor,
   controls.finishedSize,
   controls.shadeCount,
+  controls.threadCount,
   controls.conversionMode,
   controls.autoInvertDarkBackground,
   controls.mirrorSourceSide,
@@ -360,6 +394,7 @@ function syncLabels() {
   controls.fabricCountValue.textContent = `${controls.fabricCount.value} stitches/in`;
   controls.finishedSizeValue.textContent = `${controls.finishedSize.value} cm`;
   controls.shadeCountValue.textContent = `${controls.shadeCount.value} shades`;
+  controls.threadCountValue.textContent = `${controls.threadCount.value} thread${controls.threadCount.value === "1" ? "" : "s"}`;
   const lineArtMode = controls.conversionMode.value === "line-art";
   controls.outlineEnabled.disabled = !lineArtMode;
   controls.outlineColor.disabled = !lineArtMode;
@@ -397,7 +432,7 @@ function renderPattern() {
   const mirrorSummary = options.mirrorEnabled ? ", mirror left/right on" : "";
   controls.stitchStats.textContent = `${pattern.width} x ${pattern.height}`;
   controls.sizeStats.textContent = `${pattern.finishedWidthCm.toFixed(1)} x ${pattern.finishedHeightCm.toFixed(1)} cm`;
-  controls.threadStats.textContent = `${pattern.palette.length} shade${pattern.palette.length === 1 ? "" : "s"}`;
+  controls.threadStats.textContent = `${pattern.palette.length} shade${pattern.palette.length === 1 ? "" : "s"}, ${pattern.threadCount} thread${pattern.threadCount === 1 ? "" : "s"}`;
   const cropSummary = manualCropRect
     ? `Manual crop ${pattern.width} by ${pattern.height} stitches`
     : describeCrop(cropRect, workingImage);
@@ -405,7 +440,7 @@ function renderPattern() {
   controls.renderMeta.textContent = `${sourceName} - ${pattern.width} x ${pattern.height} stitches.${invertSummary}`;
 
   const capped = pattern.wasCapped ? " Pattern detail was capped to keep the canvas export practical." : "";
-  setStatus(`Ready. ${modeDetail} mode${mirrorSummary}, ${pattern.width} by ${pattern.height} stitches on ${options.fabricCount}-count Aida. ${cropSummary}.${invertSummary}${capped}`, pattern.wasCapped ? "warning" : "");
+  setStatus(`Ready. ${modeDetail} mode${mirrorSummary}, ${pattern.width} by ${pattern.height} stitches on ${getAidaLabel(options.aidaColor)} ${options.fabricCount}-count Aida. ${cropSummary}.${invertSummary}${capped}`, pattern.wasCapped ? "warning" : "");
 }
 
 function getOptions() {
@@ -417,8 +452,10 @@ function getOptions() {
     autoCropEnabled: true,
     cropPaddingPercent: 20,
     fabricCount: Number(controls.fabricCount.value),
+    aidaColor: controls.aidaColor.value,
     finishedMaxCm: Number(controls.finishedSize.value),
     shadeCount: Number(controls.shadeCount.value),
+    threadCount: Number(controls.threadCount.value),
     outlineEnabled: controls.outlineEnabled.checked,
     outlineColor: controls.outlineColor.value,
     edgeSensitivity: Number(controls.edgeSensitivity.value),
@@ -795,34 +832,48 @@ function analyzeSourceArt(image, dimensions, options, cropRect = fullImageCropRe
   const sourceHasTransparency = transparentPixels / highAlpha.length > 0.001;
   const cellCount = dimensions.width * dimensions.height;
   const luminance = new Float32Array(cellCount);
+  const rawLuminance = new Float32Array(cellCount);
   const inkCoverage = new Float32Array(cellCount);
   const traceCoverage = new Float32Array(cellCount);
   const edgeCoverage = new Float32Array(cellCount);
   const foregroundCoverage = new Float32Array(cellCount);
   const rawDarkCoverage = new Float32Array(cellCount);
+  const rawBlackCoverage = new Float32Array(cellCount);
+  const rawGreyCoverage = new Float32Array(cellCount);
+  const rawWhiteCoverage = new Float32Array(cellCount);
   const optionalEdgeCoverage = new Float32Array(cellCount);
 
   for (let y = 0; y < dimensions.height; y++) {
     for (let x = 0; x < dimensions.width; x++) {
       let totalTone = 0;
+      let totalRawTone = 0;
       let ink = 0;
       let trace = 0;
       let edge = 0;
       let foreground = 0;
       let rawDark = 0;
+      let rawBlack = 0;
+      let rawGrey = 0;
+      let rawWhite = 0;
       let optionalEdge = 0;
 
       for (let sy = 0; sy < oversample; sy++) {
         for (let sx = 0; sx < oversample; sx++) {
           const sampleIndex = (y * oversample + sy) * sampleWidth + x * oversample + sx;
+          const rawTone = highLuminance[sampleIndex];
+          const opaque = highAlpha[sampleIndex] ? 1 : 0;
           totalTone += stretched[sampleIndex];
+          totalRawTone += rawTone;
           ink += binary[sampleIndex];
           trace += traced[sampleIndex];
           edge += edges[sampleIndex] >= edgeCutoff ? 1 : 0;
-          rawDark += highLuminance[sampleIndex] <= lineArtInkThreshold && highAlpha[sampleIndex] ? 1 : 0;
+          rawDark += rawTone <= lineArtInkThreshold && opaque ? 1 : 0;
+          rawBlack += rawTone <= 77 && opaque ? 1 : 0;
+          rawGrey += rawTone > 77 && rawTone < 179 && opaque ? 1 : 0;
+          rawWhite += rawTone >= 179 && opaque ? 1 : 0;
           optionalEdge +=
-            highAlpha[sampleIndex] &&
-            highLuminance[sampleIndex] < lineArtIgnoreAboveThreshold &&
+            opaque &&
+            rawTone < lineArtIgnoreAboveThreshold &&
             rawEdges[sampleIndex] >= edgeCutoff
               ? 1
               : 0;
@@ -833,22 +884,30 @@ function analyzeSourceArt(image, dimensions, options, cropRect = fullImageCropRe
       const cellIndex = y * dimensions.width + x;
       const sampleArea = oversample * oversample;
       luminance[cellIndex] = totalTone / sampleArea;
+      rawLuminance[cellIndex] = totalRawTone / sampleArea;
       inkCoverage[cellIndex] = ink / sampleArea;
       traceCoverage[cellIndex] = trace / sampleArea;
       edgeCoverage[cellIndex] = edge / sampleArea;
       foregroundCoverage[cellIndex] = foreground / sampleArea;
       rawDarkCoverage[cellIndex] = rawDark / sampleArea;
+      rawBlackCoverage[cellIndex] = rawBlack / sampleArea;
+      rawGreyCoverage[cellIndex] = rawGrey / sampleArea;
+      rawWhiteCoverage[cellIndex] = rawWhite / sampleArea;
       optionalEdgeCoverage[cellIndex] = optionalEdge / sampleArea;
     }
   }
 
   return {
     luminance,
+    rawLuminance,
     inkCoverage,
     traceCoverage,
     edgeCoverage,
     foregroundCoverage,
     rawDarkCoverage,
+    rawBlackCoverage,
+    rawGreyCoverage,
+    rawWhiteCoverage,
     optionalEdgeCoverage,
     stretchLow,
     stretchHigh
@@ -860,6 +919,8 @@ function buildPattern(analysis, dimensions, options) {
   const shadeCount = options.shadeCount;
   const cells = new Array(width * height);
   const levels = makeGrayscaleLevels(shadeCount);
+  const displayLevels = makeAidaDisplayLevels(shadeCount, options.aidaColor);
+  const blankPaletteIndex = options.aidaColor === "white" ? shadeCount - 1 : null;
   const whiteIndex = shadeCount - 1;
   const mode = options.conversionMode;
   const lineThreshold = Math.max(0.018, 0.07 - options.outlineStrength * 0.01);
@@ -872,6 +933,7 @@ function buildPattern(analysis, dimensions, options) {
     cells[index] = {
       luminance: interpreted.luminance,
       color: interpreted.isBlank ? "#ffffff" : levels[interpreted.shadeIndex],
+      displayColor: interpreted.isBlank ? getAidaColor(options.aidaColor) : displayLevels[interpreted.shadeIndex],
       paletteIndex: interpreted.isBlank ? null : interpreted.shadeIndex,
       isBlank: interpreted.isBlank,
       isOutline: interpreted.isOutline
@@ -880,8 +942,9 @@ function buildPattern(analysis, dimensions, options) {
 
   let palette = levels.map((color, index) => ({
     color,
+    displayColor: displayLevels[index],
     symbol: chartSymbols[index] || String(index + 1),
-    label: index === whiteIndex ? "White / blank" : `Floss shade ${index + 1}`,
+    label: index === blankPaletteIndex ? "White / blank" : `Floss shade ${index + 1}`,
     count: 0
   }));
 
@@ -892,6 +955,7 @@ function buildPattern(analysis, dimensions, options) {
     if (cells.some((cell) => cell.isOutline)) {
       palette.push({
         color: outlineColor,
+        displayColor: getOutlineDisplayColor(outlineColor, options.aidaColor),
         symbol: chartSymbols[outlineIndex] || String(outlineIndex + 1),
         label: "Traced stitched line",
         count: 0
@@ -900,6 +964,7 @@ function buildPattern(analysis, dimensions, options) {
       cells.forEach((cell) => {
         if (cell.isOutline) {
           cell.color = outlineColor;
+          cell.displayColor = getOutlineDisplayColor(outlineColor, options.aidaColor);
           cell.paletteIndex = outlineIndex;
           cell.isBlank = false;
         }
@@ -916,7 +981,7 @@ function buildPattern(analysis, dimensions, options) {
   const usedPalette = [];
   const remap = new Map();
   palette.forEach((entry, originalIndex) => {
-    if (entry.count > 0 && originalIndex !== whiteIndex) {
+    if (entry.count > 0 && originalIndex !== blankPaletteIndex) {
       remap.set(originalIndex, usedPalette.length);
       usedPalette.push(entry);
     }
@@ -932,6 +997,8 @@ function buildPattern(analysis, dimensions, options) {
     cells,
     palette,
     fabricCount: options.fabricCount,
+    aidaColor: options.aidaColor,
+    threadCount: options.threadCount,
     stitchSizeCm: dimensions.stitchSizeCm,
     finishedWidthCm: dimensions.finishedWidthCm,
     finishedHeightCm: dimensions.finishedHeightCm,
@@ -951,10 +1018,14 @@ function interpretCellForMode(analysis, index, options, mode, lineThreshold, sil
     };
   }
 
+  if (options.aidaColor === "grey" && (mode === "tonal" || mode === "line-art")) {
+    return interpretGreyAidaCell(analysis, index, options);
+  }
+
   if (mode === "tonal") {
     const luminance = clamp(Math.round(analysis.luminance[index]), 0, 255);
     const rawShadeIndex = quantize(luminance, options.shadeCount);
-    const isBlank = isWhiteBlankCell(analysis, index, luminance);
+    const isBlank = isAidaBlankCell(analysis, index, luminance, options);
     const shadeIndex = isBlank ? rawShadeIndex : Math.min(rawShadeIndex, Math.max(0, whiteIndex - 1));
     return {
       luminance,
@@ -982,10 +1053,10 @@ function interpretCellForMode(analysis, index, options, mode, lineThreshold, sil
   const coverageDarkening = analysis.inkCoverage[index] * 175 + analysis.edgeCoverage[index] * 22;
   const tracedLine = options.outlineEnabled && analysis.traceCoverage[index] >= lineThreshold;
   const sourceLuminance = Math.round(analysis.luminance[index]);
-  const blankWhite = !tracedLine && isWhiteBlankCell(analysis, index, sourceLuminance);
-  const luminance = tracedLine ? 0 : blankWhite ? 255 : clamp(Math.round(analysis.luminance[index] - coverageDarkening), 0, 255);
+  const blankFabric = !tracedLine && isAidaBlankCell(analysis, index, sourceLuminance, options);
+  const luminance = tracedLine ? 0 : blankFabric ? getAidaBlankLuminance(options.aidaColor) : clamp(Math.round(analysis.luminance[index] - coverageDarkening), 0, 255);
   const rawShadeIndex = tracedLine ? 0 : quantize(luminance, options.shadeCount);
-  const isBlank = blankWhite;
+  const isBlank = blankFabric;
   const shadeIndex = isBlank ? rawShadeIndex : Math.min(rawShadeIndex, Math.max(0, whiteIndex - 1));
 
   return {
@@ -996,6 +1067,56 @@ function interpretCellForMode(analysis, index, options, mode, lineThreshold, sil
   };
 }
 
+function interpretGreyAidaCell(analysis, index, options) {
+  const classification = classifyGreyAidaCell(analysis, index);
+
+  if (classification === "grey") {
+    return {
+      luminance: 128,
+      shadeIndex: 0,
+      isBlank: true,
+      isOutline: false
+    };
+  }
+
+  const rawLuminance = clamp(Math.round(analysis.rawLuminance[index]), 0, 255);
+  return {
+    luminance: classification === "black" ? Math.min(rawLuminance, 77) : Math.max(rawLuminance, 179),
+    shadeIndex: greyAidaShadeIndex(rawLuminance, classification, options.shadeCount),
+    isBlank: false,
+    isOutline: false
+  };
+}
+
+function classifyGreyAidaCell(analysis, index) {
+  const black = analysis.rawBlackCoverage[index];
+  const grey = analysis.rawGreyCoverage[index];
+  const white = analysis.rawWhiteCoverage[index];
+  const total = black + grey + white;
+
+  if (total <= 0) return "grey";
+  if (grey > black && grey > white) return "grey";
+  if (black > white) return "black";
+  if (white > black) return "white";
+  return analysis.rawLuminance[index] < 128 ? "black" : "white";
+}
+
+function greyAidaShadeIndex(rawLuminance, classification, shadeCount) {
+  if (shadeCount <= 1) return 0;
+  if (shadeCount === 2) return classification === "black" ? 0 : 1;
+
+  const darkCount = Math.ceil(shadeCount / 2);
+  const lightCount = shadeCount - darkCount;
+
+  if (classification === "black") {
+    const darkPosition = Math.round((clamp(rawLuminance, 0, 77) / 77) * (darkCount - 1));
+    return clamp(darkPosition, 0, darkCount - 1);
+  }
+
+  const lightPosition = lightCount <= 1 ? 0 : Math.round(((clamp(rawLuminance, 179, 255) - 179) / (255 - 179)) * (lightCount - 1));
+  return clamp(darkCount + lightPosition, darkCount, shadeCount - 1);
+}
+
 function isWhiteBlankCell(analysis, index, luminance) {
   return (
     luminance >= whiteBlankLuminanceThreshold &&
@@ -1003,6 +1124,24 @@ function isWhiteBlankCell(analysis, index, luminance) {
     analysis.edgeCoverage[index] < 0.02 &&
     analysis.traceCoverage[index] < 0.01
   );
+}
+
+function isAidaBlankCell(analysis, index, luminance, options) {
+  if (options.aidaColor === "grey") {
+    return luminance >= 77 && luminance <= 179 && analysis.edgeCoverage[index] < 0.03 && analysis.traceCoverage[index] < 0.02;
+  }
+
+  if (options.aidaColor === "black") {
+    return luminance <= 32 && analysis.edgeCoverage[index] < 0.03 && analysis.traceCoverage[index] < 0.02;
+  }
+
+  return isWhiteBlankCell(analysis, index, luminance);
+}
+
+function getAidaBlankLuminance(aidaColor) {
+  if (aidaColor === "grey") return 128;
+  if (aidaColor === "black") return 0;
+  return 255;
 }
 
 function percentileFromHistogram(histogram, percentile) {
@@ -1169,6 +1308,64 @@ function makeGrayscaleLevels(count) {
     const value = Math.round(darkestPrintedShade + (255 - darkestPrintedShade) * (index / (count - 1)));
     return rgbToHex(value, value, value);
   });
+}
+
+function makeAidaDisplayLevels(count, aidaColor) {
+  if (aidaColor === "white") {
+    if (count === 2) return ["#000000", "#ffffff"];
+    return makeGrayscaleLevels(count);
+  }
+
+  if (aidaColor === "grey") {
+    return makeGreyAidaFlossColors(count);
+  }
+
+  const flossCount = Math.max(1, count - 1);
+  return [...makeBlackAidaFlossColors(flossCount), getAidaColor(aidaColor)];
+}
+
+function makeGreyAidaFlossColors(count) {
+  if (count === 1) return ["#000000"];
+  if (count === 2) return ["#000000", "#ffffff"];
+
+  const darkCount = Math.ceil(count / 2);
+  const lightCount = count - darkCount;
+  const darkColors = Array.from({ length: darkCount }, (_, index) => {
+    const value = darkCount === 1 ? 0 : Math.round(77 * (index / (darkCount - 1)));
+    return grayHex(value);
+  });
+  const lightColors = Array.from({ length: lightCount }, (_, index) => {
+    const value = lightCount === 1 ? 255 : Math.round(179 + (255 - 179) * (index / (lightCount - 1)));
+    return grayHex(value);
+  });
+
+  return [...darkColors, ...lightColors];
+}
+
+function makeBlackAidaFlossColors(count) {
+  if (count === 1) return ["#ffffff"];
+  return Array.from({ length: count }, (_, index) => {
+    const value = Math.round(85 + (255 - 85) * (index / (count - 1)));
+    return grayHex(value);
+  });
+}
+
+function grayHex(value) {
+  const channel = clamp(Math.round(value), 0, 255);
+  return rgbToHex(channel, channel, channel);
+}
+
+function getAidaColor(aidaColor) {
+  return aidaColors[aidaColor]?.color || aidaColors.white.color;
+}
+
+function getAidaLabel(aidaColor) {
+  return aidaColors[aidaColor]?.label || aidaColors.white.label;
+}
+
+function getOutlineDisplayColor(outlineColor, aidaColor) {
+  if (aidaColor === "black" && normalizeHex(outlineColor) === "#000000") return "#ffffff";
+  return outlineColor;
 }
 
 function quantize(luminance, shadeCount) {
@@ -1343,7 +1540,7 @@ function applyMirrorMode(pattern, options) {
 
   const patternCenterX = (pattern.width - 1) / 2;
   const shiftX = Math.round(patternCenterX - centerX);
-  const centeredCells = createBlankCellGrid(pattern.width, pattern.height);
+  const centeredCells = createBlankCellGrid(pattern.width, pattern.height, options.aidaColor);
 
   for (let y = 0; y < pattern.height; y++) {
     for (let x = 0; x < pattern.width; x++) {
@@ -1375,10 +1572,11 @@ function findNonBlankConcentrationCenterX(pattern) {
   return count > 0 ? weightedX / count : null;
 }
 
-function createBlankCellGrid(width, height) {
+function createBlankCellGrid(width, height, aidaColor = "white") {
   return Array.from({ length: width * height }, () => ({
     luminance: 255,
     color: "#ffffff",
+    displayColor: getAidaColor(aidaColor),
     paletteIndex: null,
     isBlank: true,
     isOutline: false
@@ -1436,6 +1634,7 @@ function rebuildPatternWithCells(pattern, cells) {
       return {
         luminance: 255,
         color: "#ffffff",
+        displayColor: getAidaColor(pattern.aidaColor),
         paletteIndex: null,
         isBlank: true,
         isOutline: false
@@ -1464,7 +1663,7 @@ function applyFiveStitchGutter(pattern) {
   const bottom = Math.ceil((bounds.maxY + 1) / 5) * 5 - 1;
   const width = right - left + 1;
   const height = bottom - top + 1;
-  const cells = createBlankCellGrid(width, height);
+  const cells = createBlankCellGrid(width, height, pattern.aidaColor);
 
   for (let y = 0; y < height; y++) {
     const sourceY = y + top;
@@ -1496,7 +1695,7 @@ function cropPatternToRect(pattern, rect) {
   const bottom = clamp(Math.floor(rect.y + rect.height - 1), top, Math.max(0, pattern.height - 1));
   const width = right - left + 1;
   const height = bottom - top + 1;
-  const cells = createBlankCellGrid(width, height);
+  const cells = createBlankCellGrid(width, height, pattern.aidaColor);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -1523,7 +1722,7 @@ function cloneCell(cell) {
 function drawPattern(pattern, options = getOptions()) {
   const patternWidthPx = pattern.width * cellPixels;
   const patternHeightPx = pattern.height * cellPixels;
-  const canvasWidth = Math.max(margin * 2 + patternWidthPx, 860);
+  const canvasWidth = Math.max(margin * 2 + patternWidthPx, 1120);
   const keyY = margin * 2 + patternHeightPx;
   const canvasHeight = keyY + getKeyHeight(pattern) + margin;
 
@@ -1555,13 +1754,13 @@ function drawPattern(pattern, options = getOptions()) {
 function drawStitchPreview(pattern) {
   const patternWidthPx = pattern.width * cellPixels;
   const patternHeightPx = pattern.height * cellPixels;
-  const canvasWidth = Math.max(margin * 2 + patternWidthPx, 860);
+  const canvasWidth = Math.max(margin * 2 + patternWidthPx, 1120);
   const canvasHeight = margin * 2 + patternHeightPx;
 
   previewCanvas.width = canvasWidth;
   previewCanvas.height = canvasHeight;
 
-  previewCtx.fillStyle = "#ffffff";
+  previewCtx.fillStyle = getAidaColor(pattern.aidaColor);
   previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
   previewCtx.save();
@@ -1582,7 +1781,7 @@ function drawStitchPreview(pattern) {
       const right = (x + 1) * cellPixels - inset;
       const bottom = (y + 1) * cellPixels - inset;
 
-      previewCtx.strokeStyle = cell.color;
+      previewCtx.strokeStyle = cell.displayColor || cell.color;
       previewCtx.beginPath();
       previewCtx.moveTo(left, top);
       previewCtx.lineTo(right, bottom);
@@ -1607,7 +1806,7 @@ function drawPreviewGrid(pattern) {
     const decade = major && x % 10 === 0;
     previewCtx.beginPath();
     previewCtx.lineWidth = decade ? 2 : 1;
-    previewCtx.strokeStyle = gridStrokeStyle(major, decade);
+    previewCtx.strokeStyle = previewGridStrokeStyle(pattern.aidaColor, major, decade);
     previewCtx.moveTo(x * cellPixels, 0);
     previewCtx.lineTo(x * cellPixels, height * cellPixels);
     previewCtx.stroke();
@@ -1618,7 +1817,7 @@ function drawPreviewGrid(pattern) {
     const decade = major && y % 10 === 0;
     previewCtx.beginPath();
     previewCtx.lineWidth = decade ? 2 : 1;
-    previewCtx.strokeStyle = gridStrokeStyle(major, decade);
+    previewCtx.strokeStyle = previewGridStrokeStyle(pattern.aidaColor, major, decade);
     previewCtx.moveTo(0, y * cellPixels);
     previewCtx.lineTo(width * cellPixels, y * cellPixels);
     previewCtx.stroke();
@@ -1651,9 +1850,106 @@ function drawSymbols(pattern, options = getOptions()) {
       if (x === center.x && y === center.y) continue;
       const paletteItem = pattern.palette[cell.paletteIndex];
       ctx.fillStyle = options.whiteOutStitches ? "#555555" : contrastFor(cell.color);
-      ctx.fillText(paletteItem.symbol, x * cellPixels + cellPixels / 2, y * cellPixels + cellPixels / 2 + 0.5);
+      drawSymbol(paletteItem.symbol, x * cellPixels + cellPixels / 2, y * cellPixels + cellPixels / 2, cellPixels * 0.72, ctx.fillStyle);
     }
   }
+}
+
+function drawSymbol(symbol, centerX, centerY, size, color) {
+  const iconNode = getLucideIconNode(symbol);
+  if (!iconNode) {
+    ctx.fillText(symbol, centerX, centerY + 0.5);
+    return;
+  }
+
+  ctx.save();
+  ctx.translate(centerX - size / 2, centerY - size / 2);
+  ctx.scale(size / 24, size / 24);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = "none";
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  drawLucideNodes(iconNode);
+  ctx.restore();
+}
+
+function getLucideIconNode(symbol) {
+  const iconName = lucideSymbolAliases[symbol] || symbol;
+  const key = toPascalCase(iconName);
+  return window.lucide?.icons?.[key] || window.lucide?.[key] || null;
+}
+
+function drawLucideNodes(nodes) {
+  nodes.forEach(([tag, attrs, children]) => {
+    drawLucideNode(tag, attrs);
+    if (children?.length) drawLucideNodes(children);
+  });
+}
+
+function drawLucideNode(tag, attrs) {
+  if (tag === "path" && attrs.d && window.Path2D) {
+    ctx.stroke(new Path2D(attrs.d));
+    return;
+  }
+
+  if (tag === "line") {
+    ctx.beginPath();
+    ctx.moveTo(Number(attrs.x1), Number(attrs.y1));
+    ctx.lineTo(Number(attrs.x2), Number(attrs.y2));
+    ctx.stroke();
+    return;
+  }
+
+  if (tag === "circle") {
+    ctx.beginPath();
+    ctx.arc(Number(attrs.cx), Number(attrs.cy), Number(attrs.r), 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+
+  if (tag === "rect") {
+    const x = Number(attrs.x || 0);
+    const y = Number(attrs.y || 0);
+    const width = Number(attrs.width);
+    const height = Number(attrs.height);
+    const radius = Number(attrs.rx || attrs.ry || 0);
+    ctx.beginPath();
+    if (radius > 0 && ctx.roundRect) {
+      ctx.roundRect(x, y, width, height, radius);
+    } else {
+      ctx.rect(x, y, width, height);
+    }
+    ctx.stroke();
+    return;
+  }
+
+  if (tag === "polyline" || tag === "polygon") {
+    drawLucidePointList(attrs.points, tag === "polygon");
+  }
+}
+
+function drawLucidePointList(points, closed) {
+  const parsed = String(points || "")
+    .trim()
+    .split(/\s+/)
+    .map((pair) => pair.split(",").map(Number))
+    .filter((pair) => pair.length === 2 && pair.every(Number.isFinite));
+  if (parsed.length === 0) return;
+
+  ctx.beginPath();
+  ctx.moveTo(parsed[0][0], parsed[0][1]);
+  parsed.slice(1).forEach(([x, y]) => ctx.lineTo(x, y));
+  if (closed) ctx.closePath();
+  ctx.stroke();
+}
+
+function toPascalCase(value) {
+  return String(value)
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join("");
 }
 
 function drawCenterMarker(pattern) {
@@ -1703,19 +1999,34 @@ function gridStrokeStyle(major, decade) {
   return "rgb(179, 179, 179)";
 }
 
+function previewGridStrokeStyle(aidaColor, major, decade) {
+  if (aidaColor === "black") {
+    if (decade) return "rgb(255, 255, 255)";
+    if (major) return "rgb(232, 232, 232)";
+    return "rgb(205, 205, 205)";
+  }
+
+  return gridStrokeStyle(major, decade);
+}
+
 function drawKey(pattern, x, y, width) {
   const columnGap = margin;
   const stitchedAreaLines = getStitchedAreaLines(pattern);
   const materialRows = pattern.palette.map((item) => ({
     required: formatThreadRequirement(item.count, pattern.fabricCount),
-    detail: `${item.count} stitch${item.count === 1 ? "" : "es"} + 2 in waste`
+    trueRequired: formatTrueFlossRequirement(item.count, pattern.fabricCount, pattern.threadCount),
+    detail: `${item.count} stitch${item.count === 1 ? "" : "es"} + ${getWasteInches(item.count)} in waste`,
+    trueDetail: `${pattern.threadCount} thread${pattern.threadCount === 1 ? "" : "s"} per needle`
   }));
   const threadColumnWidth = measureThreadKeyColumn(pattern);
   const materialsColumnWidth = measureMaterialsColumn(materialRows);
+  const trueMaterialsColumnWidth = measureTrueMaterialsColumn(materialRows, pattern.threadCount);
   const stitchedAreaWidth = measureStitchedAreaColumn(stitchedAreaLines);
   const stitchedAreaX = x + width - stitchedAreaWidth;
   const materialsX = x + threadColumnWidth + columnGap;
-  const materialTextWidth = Math.max(80, Math.min(materialsColumnWidth, stitchedAreaX - materialsX - columnGap));
+  const trueMaterialsX = materialsX + materialsColumnWidth + columnGap;
+  const materialTextWidth = Math.max(80, Math.min(materialsColumnWidth, Math.max(80, width * 0.22)));
+  const trueMaterialTextWidth = Math.max(90, Math.min(trueMaterialsColumnWidth, stitchedAreaX - trueMaterialsX - columnGap));
   const threadTextWidth = Math.max(80, threadColumnWidth - 42);
 
   ctx.fillStyle = "#111111";
@@ -1724,27 +2035,29 @@ function drawKey(pattern, x, y, width) {
   ctx.textBaseline = "top";
   ctx.fillText("Thread key", x, y);
   ctx.fillText("Materials", materialsX, y);
+  ctx.fillText("True Floss Required", trueMaterialsX, y);
   drawStitchedAreaKey(stitchedAreaLines, stitchedAreaX, y, stitchedAreaWidth);
 
   ctx.font = "12px Arial, sans-serif";
   ctx.fillStyle = "#454545";
-  ctx.fillText(`${pattern.fabricCount}-count Aida`, x, y + 28);
+  ctx.fillText(`${getAidaLabel(pattern.aidaColor)} ${pattern.fabricCount}-count Aida`, x, y + 28);
   ctx.fillText(`${pattern.finishedWidthCm.toFixed(1)} x ${pattern.finishedHeightCm.toFixed(1)} cm`, x, y + 45);
   ctx.fillText("Approx. floss required", materialsX, y + 28, materialTextWidth);
+  ctx.fillText(`${pattern.threadCount} thread${pattern.threadCount === 1 ? "" : "s"} per needle`, trueMaterialsX, y + 28, trueMaterialTextWidth);
 
   let rowY = y + 82;
   pattern.palette.forEach((item, index) => {
-    ctx.fillStyle = item.color;
+    ctx.fillStyle = item.displayColor || item.color;
     ctx.fillRect(x, rowY, 30, 30);
     ctx.strokeStyle = "#111111";
     ctx.lineWidth = 1;
     ctx.strokeRect(x, rowY, 30, 30);
 
-    ctx.fillStyle = contrastFor(item.color);
+    ctx.fillStyle = contrastFor(item.displayColor || item.color);
     ctx.font = "700 16px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(item.symbol, x + 15, rowY + 15);
+    drawSymbol(item.symbol, x + 15, rowY + 15, 19, ctx.fillStyle);
 
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
@@ -1754,7 +2067,7 @@ function drawKey(pattern, x, y, width) {
 
     ctx.font = "12px Arial, sans-serif";
     ctx.fillStyle = "#555555";
-    ctx.fillText(`${item.color.toUpperCase()} - ${item.count} stitches`, x + 42, rowY + 17, threadTextWidth);
+    ctx.fillText(`${(item.displayColor || item.color).toUpperCase()} - ${item.count} stitches`, x + 42, rowY + 17, threadTextWidth);
 
     ctx.font = "700 13px Arial, sans-serif";
     ctx.fillStyle = "#111111";
@@ -1763,6 +2076,14 @@ function drawKey(pattern, x, y, width) {
     ctx.font = "12px Arial, sans-serif";
     ctx.fillStyle = "#555555";
     ctx.fillText(materialRows[index].detail, materialsX, rowY + 17, materialTextWidth);
+
+    ctx.font = "700 13px Arial, sans-serif";
+    ctx.fillStyle = "#111111";
+    ctx.fillText(materialRows[index].trueRequired, trueMaterialsX, rowY, trueMaterialTextWidth);
+
+    ctx.font = "12px Arial, sans-serif";
+    ctx.fillStyle = "#555555";
+    ctx.fillText(materialRows[index].trueDetail, trueMaterialsX, rowY + 17, trueMaterialTextWidth);
     rowY += 48;
   });
 }
@@ -1786,12 +2107,12 @@ function drawStitchedAreaKey(lines, x, y, width) {
 
 function measureThreadKeyColumn(pattern) {
   let width = measureText("700 20px Arial, sans-serif", "Thread key");
-  width = Math.max(width, measureText("12px Arial, sans-serif", `${pattern.fabricCount}-count Aida`));
+  width = Math.max(width, measureText("12px Arial, sans-serif", `${getAidaLabel(pattern.aidaColor)} ${pattern.fabricCount}-count Aida`));
   width = Math.max(width, measureText("12px Arial, sans-serif", `${pattern.finishedWidthCm.toFixed(1)} x ${pattern.finishedHeightCm.toFixed(1)} cm`));
 
   pattern.palette.forEach((item) => {
     width = Math.max(width, 42 + measureText("700 13px Arial, sans-serif", item.label));
-    width = Math.max(width, 42 + measureText("12px Arial, sans-serif", `${item.color.toUpperCase()} - ${item.count} stitches`));
+    width = Math.max(width, 42 + measureText("12px Arial, sans-serif", `${(item.displayColor || item.color).toUpperCase()} - ${item.count} stitches`));
   });
 
   return Math.ceil(width);
@@ -1804,6 +2125,18 @@ function measureMaterialsColumn(rows) {
   rows.forEach((row) => {
     width = Math.max(width, measureText("700 13px Arial, sans-serif", row.required));
     width = Math.max(width, measureText("12px Arial, sans-serif", row.detail));
+  });
+
+  return Math.ceil(width);
+}
+
+function measureTrueMaterialsColumn(rows, threadCount) {
+  let width = measureText("700 20px Arial, sans-serif", "True Floss Required");
+  width = Math.max(width, measureText("12px Arial, sans-serif", `${threadCount} thread${threadCount === 1 ? "" : "s"} per needle`));
+
+  rows.forEach((row) => {
+    width = Math.max(width, measureText("700 13px Arial, sans-serif", row.trueRequired));
+    width = Math.max(width, measureText("12px Arial, sans-serif", row.trueDetail));
   });
 
   return Math.ceil(width);
@@ -1835,11 +2168,34 @@ function getStitchedAreaLines(pattern) {
 }
 
 function formatThreadRequirement(stitchCount, fabricCount) {
+  return formatInchesAndCm(getBaseFlossInches(stitchCount, fabricCount));
+}
+
+function formatTrueFlossRequirement(stitchCount, fabricCount, threadCount) {
+  return formatInchesAndCm(getBaseFlossInches(stitchCount, fabricCount) / getThreadDivisor(threadCount));
+}
+
+function getBaseFlossInches(stitchCount, fabricCount) {
   const cellInches = 1 / fabricCount;
   const stitchDiagonalInches = Math.hypot(cellInches, cellInches);
   const inchesPerStitch = 2 * stitchDiagonalInches + cellInches * 3;
-  const totalInches = stitchCount * inchesPerStitch + 2;
-  return formatInchesAndCm(totalInches);
+  return stitchCount * inchesPerStitch + getWasteInches(stitchCount);
+}
+
+function getWasteInches(stitchCount) {
+  return stitchCount > 0 ? Math.ceil(stitchCount / 1000) : 0;
+}
+
+function getThreadDivisor(threadCount) {
+  const divisors = {
+    1: 6,
+    2: 3,
+    3: 2,
+    4: 1.5,
+    5: 1.2,
+    6: 1
+  };
+  return divisors[threadCount] || 2;
 }
 
 function formatInchesAndCm(inches) {
