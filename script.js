@@ -2126,7 +2126,6 @@ function previewGridStrokeStyle(aidaColor, major, decade) {
 
 function drawKey(pattern, x, y, width) {
   const columnGap = margin;
-  const stitchedAreaLines = getStitchedAreaLines(pattern);
   const materialRows = pattern.palette.map((item) => ({
     required: formatThreadRequirement(item.count, pattern.fabricCount),
     trueRequired: formatTrueFlossRequirement(item.count, pattern.fabricCount, pattern.threadCount),
@@ -2136,12 +2135,10 @@ function drawKey(pattern, x, y, width) {
   const threadColumnWidth = measureThreadKeyColumn(pattern);
   const materialsColumnWidth = measureMaterialsColumn(materialRows);
   const trueMaterialsColumnWidth = measureTrueMaterialsColumn(materialRows, pattern.threadCount);
-  const stitchedAreaWidth = measureStitchedAreaColumn(stitchedAreaLines);
-  const stitchedAreaX = x + width - stitchedAreaWidth;
   const materialsX = x + threadColumnWidth + columnGap;
   const trueMaterialsX = materialsX + materialsColumnWidth + columnGap;
   const materialTextWidth = Math.max(80, Math.min(materialsColumnWidth, Math.max(80, width * 0.22)));
-  const trueMaterialTextWidth = Math.max(90, Math.min(trueMaterialsColumnWidth, stitchedAreaX - trueMaterialsX - columnGap));
+  const trueMaterialTextWidth = Math.max(90, Math.min(trueMaterialsColumnWidth, x + width - trueMaterialsX));
   const threadTextWidth = Math.max(80, threadColumnWidth - 42);
 
   ctx.fillStyle = "#111111";
@@ -2151,12 +2148,11 @@ function drawKey(pattern, x, y, width) {
   ctx.fillText("Thread key", x, y);
   ctx.fillText("Materials", materialsX, y);
   ctx.fillText("True Floss Required", trueMaterialsX, y);
-  drawStitchedAreaKey(stitchedAreaLines, stitchedAreaX, y, stitchedAreaWidth);
 
   ctx.font = "12px Arial, sans-serif";
   ctx.fillStyle = "#454545";
   ctx.fillText(`${getAidaLabel(pattern.aidaColor)} ${pattern.fabricCount}-count Aida`, x, y + 28);
-  ctx.fillText(`${pattern.finishedWidthCm.toFixed(1)} x ${pattern.finishedHeightCm.toFixed(1)} cm`, x, y + 45);
+  ctx.fillText(getCutSizeLabel(pattern), x, y + 45);
   ctx.fillText("Approx. floss required", materialsX, y + 28, materialTextWidth);
   ctx.fillText(`${pattern.threadCount} thread${pattern.threadCount === 1 ? "" : "s"} per needle`, trueMaterialsX, y + 28, trueMaterialTextWidth);
 
@@ -2203,27 +2199,10 @@ function drawKey(pattern, x, y, width) {
   });
 }
 
-function drawStitchedAreaKey(lines, x, y, width) {
-  const textWidth = Math.max(20, width);
-
-  ctx.fillStyle = "#111111";
-  ctx.font = "700 16px Arial, sans-serif";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText("Stitched area", x, y);
-
-  ctx.font = "12px Arial, sans-serif";
-  ctx.fillStyle = "#555555";
-
-  lines.forEach((line, index) => {
-    ctx.fillText(line, x, y + 26 + index * 17, textWidth);
-  });
-}
-
 function measureThreadKeyColumn(pattern) {
   let width = measureText("700 20px Arial, sans-serif", "Thread key");
   width = Math.max(width, measureText("12px Arial, sans-serif", `${getAidaLabel(pattern.aidaColor)} ${pattern.fabricCount}-count Aida`));
-  width = Math.max(width, measureText("12px Arial, sans-serif", `${pattern.finishedWidthCm.toFixed(1)} x ${pattern.finishedHeightCm.toFixed(1)} cm`));
+  width = Math.max(width, measureText("12px Arial, sans-serif", getCutSizeLabel(pattern)));
 
   pattern.palette.forEach((item) => {
     width = Math.max(width, 42 + measureText("700 13px Arial, sans-serif", item.label));
@@ -2257,14 +2236,6 @@ function measureTrueMaterialsColumn(rows, threadCount) {
   return Math.ceil(width);
 }
 
-function measureStitchedAreaColumn(lines) {
-  let width = measureText("700 16px Arial, sans-serif", "Stitched area");
-  lines.forEach((line) => {
-    width = Math.max(width, measureText("12px Arial, sans-serif", line));
-  });
-  return Math.ceil(width);
-}
-
 function measureText(font, text) {
   ctx.save();
   ctx.font = font;
@@ -2273,13 +2244,13 @@ function measureText(font, text) {
   return width;
 }
 
-function getStitchedAreaLines(pattern) {
-  const bounds = getStitchBounds(pattern);
-  if (!bounds) return ["No stitches detected"];
+function getCutSizeCm(pattern) {
+  return Math.ceil(Math.max(pattern.finishedWidthCm, pattern.finishedHeightCm) + 6);
+}
 
-  const widthInches = bounds.widthStitches / pattern.fabricCount;
-  const heightInches = bounds.heightStitches / pattern.fabricCount;
-  return [`Width: ${formatInchesAndCm(widthInches)}`, `Height: ${formatInchesAndCm(heightInches)}`];
+function getCutSizeLabel(pattern) {
+  const cutSizeCm = getCutSizeCm(pattern);
+  return `Cut Size: ${cutSizeCm} cm x ${cutSizeCm} cm`;
 }
 
 function formatThreadRequirement(stitchCount, fabricCount) {
