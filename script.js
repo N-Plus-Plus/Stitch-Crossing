@@ -40,8 +40,7 @@ const controls = {
   clearButton: document.getElementById("clearButton"),
   resetButton: document.getElementById("resetButton"),
   copyButton: document.getElementById("copyButton"),
-  downloadButton: document.getElementById("downloadButton"),
-  printButton: document.getElementById("printButton")
+  downloadButton: document.getElementById("downloadButton")
 };
 
 const maxCellsPerSide = 360;
@@ -77,6 +76,9 @@ const aidaColors = {
 };
 const margin = 28;
 const cellPixels = 18;
+const a4PagePixels = { width: 2480, height: 3508 };
+const exportBorderPixels = 300;
+const exportPatternTargetShare = 0.85;
 const darkestPrintedShade = 100;
 const whiteBlankLuminanceThreshold = 248;
 const lineArtInkThreshold = 165;
@@ -153,7 +155,6 @@ controls.pasteButton.addEventListener("click", () => {
 
 controls.copyButton.addEventListener("click", copyCanvasToClipboard);
 controls.downloadButton.addEventListener("click", downloadCanvas);
-controls.printButton.addEventListener("click", printCanvas);
 controls.cropButton.addEventListener("click", () => toggleSelectionMode("crop"));
 controls.clearButton.addEventListener("click", () => toggleSelectionMode("clear"));
 controls.resetButton.addEventListener("click", resetManipulations);
@@ -478,7 +479,8 @@ function renderPattern() {
   const normalPattern = buildPattern(analysis, dimensions, options);
   const mirroredPattern = options.mirrorEnabled ? applyMirrorMode(normalPattern, options) : normalPattern;
   const gutteredPattern = applyFiveStitchGutter(mirroredPattern);
-  const croppedPattern = manualCropRect ? cropPatternToRect(gutteredPattern, manualCropRect) : gutteredPattern;
+  const centeredPattern = centerStitchesInPattern(gutteredPattern);
+  const croppedPattern = manualCropRect ? cropPatternToRect(centeredPattern, manualCropRect) : centeredPattern;
   const pattern = applyManualClearRects(croppedPattern);
   drawPattern(pattern, options);
   drawStitchPreview(pattern);
@@ -1753,6 +1755,35 @@ function applyFiveStitchGutter(pattern) {
   );
 }
 
+function centerStitchesInPattern(pattern) {
+  const bounds = getStitchBounds(pattern);
+  if (!bounds) return pattern;
+
+  const stitchCenterX = (bounds.minX + bounds.maxX) / 2;
+  const stitchCenterY = (bounds.minY + bounds.maxY) / 2;
+  const patternCenterX = (pattern.width - 1) / 2;
+  const patternCenterY = (pattern.height - 1) / 2;
+  const shiftX = Math.round(patternCenterX - stitchCenterX);
+  const shiftY = Math.round(patternCenterY - stitchCenterY);
+
+  if (shiftX === 0 && shiftY === 0) return pattern;
+
+  const cells = createBlankCellGrid(pattern.width, pattern.height, pattern.aidaColor);
+
+  for (let y = 0; y < pattern.height; y++) {
+    for (let x = 0; x < pattern.width; x++) {
+      const sourceCell = pattern.cells[y * pattern.width + x];
+      if (sourceCell.isBlank) continue;
+      const targetX = x + shiftX;
+      const targetY = y + shiftY;
+      if (targetX < 0 || targetX >= pattern.width || targetY < 0 || targetY >= pattern.height) continue;
+      cells[targetY * pattern.width + targetX] = cloneCell(sourceCell);
+    }
+  }
+
+  return rebuildPatternWithCells(pattern, cells);
+}
+
 function cropPatternToRect(pattern, rect) {
   const left = clamp(Math.floor(rect.x), 0, Math.max(0, pattern.width - 1));
   const top = clamp(Math.floor(rect.y), 0, Math.max(0, pattern.height - 1));
@@ -1858,9 +1889,9 @@ function drawPattern(pattern, options = getOptions()) {
     }
   }
 
+  drawCenterMarker(pattern);
   drawSymbols(pattern, options);
   drawGrid(pattern);
-  drawCenterMarker(pattern);
   ctx.restore();
 
   drawKey(pattern, margin, keyY, canvasWidth - margin * 2);
@@ -1896,7 +1927,7 @@ function drawStitchPreview(pattern) {
       const right = (x + 1) * cellPixels - inset;
       const bottom = (y + 1) * cellPixels - inset;
 
-      previewCtx.strokeStyle = cell.displayColor || cell.color;
+      previewCtx.strokeStyle = getPreviewStitchColor(pattern, cell);
       previewCtx.beginPath();
       previewCtx.moveTo(left, top);
       previewCtx.lineTo(right, bottom);
@@ -1908,6 +1939,29 @@ function drawStitchPreview(pattern) {
 
   drawPreviewGrid(pattern);
   previewCtx.restore();
+}
+
+function getPreviewStitchColor(pattern, cell) {
+  if (cell.paletteIndex === null) return cell.displayColor || cell.color;
+  const shadeCount = Math.max(1, pattern.palette.length);
+
+  if (pattern.aidaColor === "black") {
+    if (shadeCount === 1) return "#ffffff";
+    const value = Math.round(128 + (255 - 128) * (cell.paletteIndex / (shadeCount - 1)));
+    return rgbToHex(value, value, value);
+  }
+
+  if (pattern.aidaColor === "grey") {
+    if (shadeCount === 1) return "#000000";
+    const half = Math.max(1, shadeCount - 1);
+    const value = Math.round(255 * (cell.paletteIndex / half));
+    if (Math.abs(value - 128) < 38) return cell.paletteIndex < shadeCount / 2 ? "#000000" : "#ffffff";
+    return rgbToHex(value, value, value);
+  }
+
+  if (shadeCount === 1) return "#000000";
+  const value = Math.round(128 * (cell.paletteIndex / (shadeCount - 1)));
+  return rgbToHex(value, value, value);
 }
 
 function drawPreviewGrid(pattern) {
@@ -1953,7 +2007,6 @@ function getPatternCenterCell(pattern) {
 }
 
 function drawSymbols(pattern, options = getOptions()) {
-  const center = getPatternCenterCell(pattern);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = `700 ${Math.max(9, Math.floor(cellPixels * 0.62))}px Arial, sans-serif`;
@@ -1962,7 +2015,6 @@ function drawSymbols(pattern, options = getOptions()) {
     for (let x = 0; x < pattern.width; x++) {
       const cell = pattern.cells[y * pattern.width + x];
       if (cell.isBlank) continue;
-      if (x === center.x && y === center.y) continue;
       const paletteItem = pattern.palette[cell.paletteIndex];
       ctx.fillStyle = options.whiteOutStitches ? "#555555" : contrastFor(cell.color);
       drawSymbol(paletteItem.symbol, x * cellPixels + cellPixels / 2, y * cellPixels + cellPixels / 2, cellPixels * 0.72, ctx.fillStyle);
@@ -2356,10 +2408,16 @@ function copyCanvasToClipboard() {
     return;
   }
 
-  canvas.toBlob(async (blob) => {
+  const exportResult = createA4ExportCanvas();
+  exportResult.canvas.toBlob(async (blob) => {
+    if (!blob) {
+      setStatus("Could not create the PNG for copying.", "error");
+      return;
+    }
+
     try {
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      setStatus("Pattern PNG copied to clipboard.");
+      setStatusWithToast(`Copied in ${exportResult.orientation}.`);
     } catch {
       setStatus("Clipboard copy was blocked by the browser. Use Download instead.", "warning");
     }
@@ -2372,44 +2430,111 @@ function downloadCanvas() {
     return;
   }
 
+  const exportResult = createA4ExportCanvas();
   const link = document.createElement("a");
   link.download = `stitch-crossing-${Date.now()}.png`;
-  link.href = canvas.toDataURL("image/png");
+  link.href = exportResult.canvas.toDataURL("image/png");
   link.click();
+  setStatusWithToast(`Downloaded in ${exportResult.orientation}.`);
 }
 
-function printCanvas() {
-  if (!latestPattern) {
-    setStatus("Load an image before printing.", "warning");
-    return;
-  }
+function createA4ExportCanvas() {
+  const portrait = {
+    orientation: "Portrait",
+    width: a4PagePixels.width - exportBorderPixels * 2,
+    height: a4PagePixels.height - exportBorderPixels * 2
+  };
+  const landscape = {
+    orientation: "Landscape",
+    width: a4PagePixels.height - exportBorderPixels * 2,
+    height: a4PagePixels.width - exportBorderPixels * 2
+  };
+  const layout = chooseExportLayout([portrait, landscape]);
+  const exportCanvas = document.createElement("canvas");
+  const exportCtx = exportCanvas.getContext("2d");
 
-  const orientation = latestPattern.width >= latestPattern.height ? "landscape" : "portrait";
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) {
-    setStatus("The print window was blocked by the browser.", "warning");
-    return;
-  }
+  exportCanvas.width = layout.page.width;
+  exportCanvas.height = layout.page.height;
+  exportCtx.fillStyle = "#ffffff";
+  exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
 
-  const dataUrl = canvas.toDataURL("image/png");
-  printWindow.document.write(`<!doctype html>
-<html>
-  <head>
-    <title>Stitch Crossing Pattern</title>
-    <style>
-      @page { size: A4 ${orientation}; margin: 10mm; }
-      html, body { margin: 0; min-height: 100%; background: #fff; }
-      body { display: grid; place-items: center; }
-      img { max-width: 100%; max-height: 100vh; object-fit: contain; }
-      @media print { img { max-height: 190mm; } }
-    </style>
-  </head>
-  <body>
-    <img src="${dataUrl}" alt="Cross-stitch pattern">
-    <script>window.onload = () => { window.focus(); window.print(); };<\/script>
-  </body>
-</html>`);
-  printWindow.document.close();
+  drawRotatedCanvas(exportCtx, canvas, layout.pattern);
+  drawRotatedCanvas(exportCtx, previewCanvas, layout.preview);
+
+  return {
+    canvas: exportCanvas,
+    orientation: layout.page.orientation
+  };
+}
+
+function chooseExportLayout(pages) {
+  let best = null;
+
+  pages.forEach((page) => {
+    ["horizontal", "vertical"].forEach((split) => {
+      [false, true].forEach((patternRotated) => {
+        [false, true].forEach((previewRotated) => {
+          const candidate = buildExportLayoutCandidate(page, split, patternRotated, previewRotated);
+          if (!best || candidate.score > best.score) best = candidate;
+        });
+      });
+    });
+  });
+
+  return best;
+}
+
+function buildExportLayoutCandidate(page, split, patternRotated, previewRotated) {
+  const patternArea = split === "horizontal"
+    ? { x: 0, y: 0, width: page.width, height: Math.round(page.height * exportPatternTargetShare) }
+    : { x: 0, y: 0, width: Math.round(page.width * exportPatternTargetShare), height: page.height };
+  const previewArea = split === "horizontal"
+    ? { x: 0, y: patternArea.height, width: page.width, height: page.height - patternArea.height }
+    : { x: patternArea.width, y: 0, width: page.width - patternArea.width, height: page.height };
+  const patternPlacement = fitCanvasIntoArea(canvas, patternArea, patternRotated);
+  const previewPlacement = fitCanvasIntoArea(previewCanvas, previewArea, previewRotated, "corner");
+  const pageArea = page.width * page.height;
+  const patternShare = patternPlacement.width * patternPlacement.height / pageArea;
+  const previewShare = previewPlacement.width * previewPlacement.height / pageArea;
+  const targetDistance = Math.abs(exportPatternTargetShare - patternShare);
+  const score = patternShare * 10000 - targetDistance * 7000 + previewShare * 1200;
+
+  return {
+    page,
+    pattern: patternPlacement,
+    preview: previewPlacement,
+    score
+  };
+}
+
+function fitCanvasIntoArea(sourceCanvas, area, rotated, alignment = "center") {
+  const sourceWidth = rotated ? sourceCanvas.height : sourceCanvas.width;
+  const sourceHeight = rotated ? sourceCanvas.width : sourceCanvas.height;
+  const scale = Math.min(area.width / sourceWidth, area.height / sourceHeight);
+  const width = Math.max(1, Math.floor(sourceWidth * scale));
+  const height = Math.max(1, Math.floor(sourceHeight * scale));
+  const x = alignment === "corner" ? area.x : area.x + Math.floor((area.width - width) / 2);
+  const y = alignment === "corner" ? area.y : area.y + Math.floor((area.height - height) / 2);
+
+  return {
+    x,
+    y,
+    width,
+    height,
+    rotated
+  };
+}
+
+function drawRotatedCanvas(targetCtx, sourceCanvas, placement) {
+  targetCtx.save();
+  if (placement.rotated) {
+    targetCtx.translate(placement.x + placement.width / 2, placement.y + placement.height / 2);
+    targetCtx.rotate(Math.PI / 2);
+    targetCtx.drawImage(sourceCanvas, -placement.height / 2, -placement.width / 2, placement.height, placement.width);
+  } else {
+    targetCtx.drawImage(sourceCanvas, placement.x, placement.y, placement.width, placement.height);
+  }
+  targetCtx.restore();
 }
 
 function normalizeHex(hex) {
@@ -2464,6 +2589,11 @@ function setStatus(message, tone = "") {
   controls.status.textContent = message;
   controls.status.classList.toggle("is-warning", tone === "warning");
   controls.status.classList.toggle("is-error", tone === "error");
+}
+
+function setStatusWithToast(message, tone = "") {
+  setStatus(message, tone);
+  showToast(message);
 }
 
 function showToast(message) {
