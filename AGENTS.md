@@ -1,5 +1,11 @@
 # Stitch Crossing Agent Notes
 
+## Version control
+
+This project is a Git repository and may be treated as a normal Git worktree for inspection and version-control operations.
+
+`AGENTS.md` is the root entry guide for this project.
+
 ## Project Overview
 
 Stitch Crossing is a small static web app for turning source artwork into a monochrome cross-stitch chart. It is currently plain HTML, CSS, and browser JavaScript:
