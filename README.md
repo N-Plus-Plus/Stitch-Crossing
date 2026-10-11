@@ -49,6 +49,10 @@ Removing process-local token overrides allows the existing Wrangler OAuth login;
 
 See Cloudflare's [Direct Upload guide](https://developers.cloudflare.com/pages/get-started/direct-upload/) and [custom domain instructions](https://developers.cloudflare.com/pages/configuration/custom-domains/).
 
+Published on 12 October 2026 from `4a9b4e9dfa6bdfe4df528990f28fea4d35193328`, deployment `b5537567-a9c6-408d-93cf-2584bf48e252` ([deployment URL](https://b5537567.stitch-crossing.pages.dev/)). Trusted HTTPS and exact asset bytes passed on the production hostname. Isolated Chromium checks passed line-art upload, text-art image paste, native PNG clipboard copy/paste, direct URL loading, real public-proxy fallback, conversion controls, PNG download, browser print-to-PDF and 390px mobile layout. Private paths returned 404; no material console errors occurred (the deliberate CORS rejection before proxy fallback is expected). Physical printer output and other browsers were not tested.
+
+`stitch.nissen.nexus` is associated but pending with `CNAME record not set`; trusted HTTPS cannot yet be verified because DNS does not resolve. OAuth DNS inspection returned HTTP 403 / error 10000; no DNS records were changed. The single required manual action is in Cloudflare Dashboard > **nissen.nexus > DNS > Records**: add a **CNAME**, Name **stitch**, Target **stitch-crossing.pages.dev**, **Proxied**, TTL **Auto**. If an existing record serves another application, resolve that conflict before changing it. Pages should validate the associated domain automatically after DNS propagates; verify HTTPS before treating the custom hostname as live.
+
 ## Current Conversion Pipeline
 
 The important image logic lives in `script.js`.
