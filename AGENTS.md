@@ -1,59 +1,15 @@
-# Stitch Crossing Agent Notes
+# Stitch Crossing: agent guide
 
-## Version control
+Static Canvas line-art/text to cross-stitch chart converter. This small app uses [README](README.md) as its combined architecture/data/contracts/UX/testing/operation authority. Behaviour: `script.js`; visuals: `styles.css`. Preserve supplied assets and user work.
 
-This project is a Git repository and may be treated as a normal Git worktree for inspection and version-control operations.
+Read this once, inspect current worktree/relevant files and use accepted functionality as the baseline. Complete the requested coherent change and necessary correctness work, then stop. No speculative refactoring, upgrades, full audits, automatic backlog or pass reports. Historical notes are reference only.
 
-`AGENTS.md` is the root entry guide for this project.
+Uploaded images are processed in the browser. White cells are blank fabric, not a floss colour or symbol. Preserve trace/skeleton reduction and per-segment negative-space 5/10-grid emphasis. Keep supplied DMC datasets unchanged and symbols ASCII. No backend/install/automated suite is configured. Build the explicit public assets with `node scripts/build.mjs`; publish only `dist/` using Wrangler Pages Direct Upload as described in README.
 
-## Project Overview
+Open index.html in a browser.
 
-Stitch Crossing is a small static web app for turning source artwork into a monochrome cross-stitch chart. It is currently plain HTML, CSS, and browser JavaScript:
+Separate test creation from execution: focused rule/security/persistence/provider/bug tests when useful; no harness for copy/CSS. After one coherent edit run the smallest relevant check. Release syntax signal: `node --check script.js`; its limits are in README. Reuse unchanged results; stop/report failure or budget exhaustion before broadening/retrying. Documentation changes need links/diff inspection only.
 
-- `index.html` defines the controls and the single preview canvas.
-- `styles.css` owns the dark UI shell, control panel, responsive layout, and canvas stage.
-- `script.js` handles image loading, image-to-pattern analysis, pattern drawing, copy/download/print, and status text.
+For UI preserve current tokens, keyboard/focus/labels and affected recovery states. Show the first usable substantial new journey before broad polish; no approval gate for minor reversible changes. Ask before consequential ambiguous product/data decisions. Never expose tokens/private data or run tests against live accounts.
 
-There is no build system or package manifest at this point. Open `index.html` directly in a browser for manual testing, or use a small local server if a browser blocks local clipboard/image behavior.
-
-## Current Conversion Pipeline
-
-The important image logic lives in `script.js`.
-
-1. `renderPattern()` reads the controls, computes stitch dimensions, runs `analyzeSourceArt()`, builds a pattern, then draws it.
-2. `analyzeSourceArt()` oversamples the source image before reducing it to the stitch grid. It composites alpha over white, stretches source luminance to a full 0-255 range using low/high percentiles, then detects linework with adaptive thresholding and Sobel-style edge magnitude.
-3. The detected binary line art is despeckled. When the stitched stroke option is enabled, it is thinned with a Zhang-Suen-style skeleton pass so fine line centers survive the stitch-grid reduction.
-4. Per-cell luminance, ink coverage, trace coverage, and edge coverage are accumulated. This lets a thin line affect a stitch cell even when simple downsampling would average it away.
-5. `buildPattern()` quantizes the stretched luminance into the requested monochrome shade count. White cells are treated as blank space: no symbol, no thread-key entry, and no floss count.
-
-The approach is intentionally tuned for line drawings and bold text, not photo-realistic conversion.
-
-## Grid Rules
-
-`drawGrid(pattern)` draws each grid line segment independently:
-
-- Fine grid lines are dark through blank/white space.
-- Fine grid lines invert to light over stitched/inked cells so dark artwork stays readable.
-- Every 5th grid line is darker only where both neighboring cells are blank.
-- Every 10th grid line is darker again and twice the normal line width, also only through blank space.
-
-This segment-level drawing is more verbose than full-line canvas strokes, but it preserves the requested negative-space behavior.
-
-## UI Notes
-
-- White is the blank fabric color. Avoid adding white to the thread palette unless the product direction changes.
-- Keep chart symbols ASCII for now. The project had early mojibake/non-ASCII issues, and exported charts should remain predictable across browsers and printers.
-- The "Outline" controls currently drive the trace/skeleton line pass. Renaming that UI to "Line trace" would be reasonable in a future polish pass.
-- The app uses a deliberately compact operational UI rather than a landing page.
-
-## Verification
-
-Useful checks:
-
-- `node --check script.js` for JavaScript syntax.
-- `rg --pcre2 "[^\\x00-\\x7F]" -n .` to confirm the project remains ASCII-only.
-- Manual browser check with a line-art image and a bold text image. Look for full brightness stretching, blank white cells, traced center lines, and 5/10-grid emphasis only in negative space.
-
-## External Method References Used
-
-The line-art pass is based on common raster-to-line-art techniques: contrast stretching, adaptive thresholding, Sobel/edge detection, despeckling, and morphological thinning/skeletonization. Those methods are common in line drawing vectorization and OCR-style preprocessing workflows.
+Do not commit/push/publish or mutate live account/user data without task authorization. For materially risky state changes confirm target and one recoverable backup; a remote timeout may already have succeeded. Update README only when enduring rules change; future work requires owner approval. Report actual checks and limitations. Documentation alone needs no restart/refresh.
