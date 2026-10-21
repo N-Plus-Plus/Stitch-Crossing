@@ -82,3 +82,11 @@ This segment-level drawing is more verbose than full-line canvas strokes, but it
 - Keep chart symbols ASCII for now. The project had early mojibake/non-ASCII issues, and exported charts should remain predictable across browsers and printers.
 - The "Outline" controls currently drive the trace/skeleton line pass. Renaming that UI to "Line trace" would be reasonable in a future polish pass.
 - The app uses a deliberately compact operational UI rather than a landing page.
+
+## Standard local launch
+
+Canonical checkout: StitchCrossing. Run `node scripts/serve.mjs` (or `start-local.bat`) and open http://127.0.0.1:10220/ . Only public assets are served; an occupied port fails without terminating its owner. Browser state and provider redirect allowlists require manual acceptance on the new origin.
+
+## Local directory and listener contract
+
+Canonical checkout: `StitchCrossing`. Primary local default: **10220**. Service ID `stitch-crossing`, repository name, display name and external data locations remain unchanged. Port configuration does not migrate browser origin storage or external OAuth allowlists; those require individual acceptance. Never terminate an unidentified listener to free a port.
